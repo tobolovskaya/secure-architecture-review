@@ -1,0 +1,73 @@
+# Hardened version of before/k8s/deployment.yaml.
+# The secret is mounted from Vault through the Secrets Store CSI driver; nothing secret is in this file.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-api
+  namespace: user-api
+  annotations:
+    checkov.io/skip1: CKV_K8S_43=Image digest is set by the release pipeline after the build; a placeholder digest here would be fake
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: user-api
+  template:
+    metadata:
+      labels:
+        app: user-api
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: user-api
+          image: user-api:1.0.0
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+          readinessProbe:
+            httpGet: { path: /health, port: 8000 }
+          livenessProbe:
+            httpGet: { path: /health, port: 8000 }
+          volumeMounts:
+            - name: secrets-store
+              mountPath: /mnt/secrets-store
+              readOnly: true
+      volumes:
+        - name: secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: user-api-vault  # checkov:skip=CKV_SECRET_6:Name of a SecretProviderClass, not a secret
+---
+# Only the ingress controller may reach the pods, on the app port.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: user-api
+  namespace: user-api
+spec:
+  podSelector:
+    matchLabels:
+      app: user-api
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - port: 8000

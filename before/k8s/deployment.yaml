@@ -1,0 +1,25 @@
+# The original deployment.yaml in the coursework template was a copy of ci.yml by mistake.
+# This manifest is rebuilt from the example in the lab description: a plain-text API key in env.
+# The key below is fake.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: user-api
+  template:
+    metadata:
+      labels:
+        app: user-api
+    spec:
+      containers:
+        - name: user-api
+          image: user-api:latest
+          ports:
+            - containerPort: 8000
+          env:
+            - name: API_KEY
+              value: "FAKE_API_KEY_123"

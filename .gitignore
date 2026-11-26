@@ -1,0 +1,6 @@
+.scan/
+.test/
+__pycache__/
+.pytest_cache/
+hadolint
+*-before.txt

@@ -1,0 +1,51 @@
+# The fixed files in after/ must pass every scanner and the tests.
+# The original files in before/ must be caught, which proves the scanners run.
+name: Architecture review
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  review:
+    name: After passes, before is caught
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install tools (pinned, hadolint checksum verified)
+        run: |
+          python3 -m venv .scan && .scan/bin/pip install --quiet -r requirements-scan.txt
+          python3 -m venv .test && .test/bin/pip install --quiet -r requirements-test.txt
+          curl -sSfL -o hadolint https://github.com/hadolint/hadolint/releases/download/v2.15.1/hadolint-linux-x86_64
+          echo "c7187db94eeeeca956519a6af171adc31453941a1e777961f6e680f697c8c507  hadolint" | sha256sum -c -
+          chmod +x hadolint
+
+      - name: Tests for the fixed app
+        run: .test/bin/python -m pytest -q
+
+      - name: after/ must pass
+        run: |
+          .scan/bin/checkov -d after --quiet --compact --skip-download
+          ./hadolint after/Dockerfile
+          .scan/bin/bandit -q -r after/app
+
+      - name: before/ must be caught
+        run: |
+          fail=0
+          if .scan/bin/checkov -d before --quiet --compact --skip-download > checkov-before.txt; then
+            echo "::error::Checkov found nothing in before/"; fail=1
+          fi
+          if ./hadolint before/Dockerfile > hadolint-before.txt; then
+            echo "::error::hadolint found nothing in before/Dockerfile"; fail=1
+          fi
+          { echo "## Scanner findings in before/"; echo '```'; cat checkov-before.txt hadolint-before.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          exit $fail
