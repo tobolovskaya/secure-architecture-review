@@ -1,0 +1,2 @@
+checkov==3.4.11
+bandit==1.9.4

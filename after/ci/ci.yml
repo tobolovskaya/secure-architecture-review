@@ -1,0 +1,40 @@
+# Hardened version of before/ci/ci.yml: a reference pipeline for the user-api service.
+# Every step must pass before the image is built; the SBOM is kept with the build.
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1, pinned to a commit
+
+      - name: Tests
+        run: python3 -m pytest -q
+
+      - name: SAST (Bandit)
+        run: bandit -r app/
+
+      - name: Dependency audit
+        run: pip-audit --strict -r app/requirements.txt
+
+      - name: Dockerfile lint (hadolint)
+        run: hadolint Dockerfile
+
+      - name: IaC and Kubernetes scan (Checkov)
+        run: checkov -d . --skip-download
+
+      - name: Build image
+        run: docker build -t user-api:${{ github.sha }} .
+
+      - name: Image scan (Trivy)
+        run: trivy image --exit-code 1 --severity HIGH,CRITICAL user-api:${{ github.sha }}
+
+      - name: SBOM (Syft)
+        run: syft user-api:${{ github.sha }} -o spdx-json > sbom.spdx.json
